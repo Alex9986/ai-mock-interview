@@ -1,10 +1,23 @@
 import OpenAI from "openai";
 import { DeepSeekMessage, QARecord, ScoreResult } from "./types";
 
-const deepseek = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || "",
-  baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
-});
+let _client: OpenAI | null = null;
+
+function getClient(): OpenAI {
+  if (!_client) {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "DEEPSEEK_API_KEY environment variable is not set. Please add it to your Vercel project settings."
+      );
+    }
+    _client = new OpenAI({
+      apiKey,
+      baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
+    });
+  }
+  return _client;
+}
 
 const INTERVIEWER_SYSTEM_PROMPT = `You are an experienced behavioral interviewer at a top technology company. Your role is to conduct a professional behavioral interview for the candidate.
 
@@ -66,7 +79,8 @@ export async function getNextQuestion(
     });
   }
 
-  const response = await deepseek.chat.completions.create({
+  const client = getClient();
+  const response = await client.chat.completions.create({
     model: "deepseek-chat",
     messages,
     temperature: 0.8,
@@ -97,7 +111,8 @@ export async function scoreInterview(
     },
   ];
 
-  const response = await deepseek.chat.completions.create({
+  const client = getClient();
+  const response = await client.chat.completions.create({
     model: "deepseek-chat",
     messages,
     temperature: 0.3,

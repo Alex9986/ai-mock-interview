@@ -93,9 +93,11 @@ export async function POST(request: NextRequest) {
       currentQuestionNumber: mainQuestions.length,
     });
   } catch (error) {
-    console.error("Error processing answer:", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Error processing answer:", message);
     return NextResponse.json(
-      { error: "Failed to process answer. Please try again." },
+      { error: `Failed to process answer: ${message}` },
       { status: 500 }
     );
   }

@@ -64,9 +64,11 @@ export async function POST(request: NextRequest) {
       qaRecords,
     });
   } catch (error) {
-    console.error("Error completing interview:", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Error completing interview:", message);
     return NextResponse.json(
-      { error: "Failed to complete interview. Please try again." },
+      { error: `Failed to complete interview: ${message}` },
       { status: 500 }
     );
   }

@@ -32,9 +32,11 @@ export async function POST(request: NextRequest) {
       conversationHistory: [assistantMessage],
     });
   } catch (error) {
-    console.error("Error starting interview:", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Error starting interview:", message);
     return NextResponse.json(
-      { error: "Failed to start interview. Please check your API key configuration." },
+      { error: `Failed to start interview: ${message}` },
       { status: 500 }
     );
   }
