@@ -2,7 +2,10 @@ import fs from "fs";
 import path from "path";
 import { InterviewSession, QARecord, ScoreResult } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR =
+  process.env.VERCEL === "1"
+    ? path.join("/tmp", "data")
+    : path.join(process.cwd(), "data");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const QA_FILE = path.join(DATA_DIR, "qa_records.json");
 const SCORES_FILE = path.join(DATA_DIR, "scores.json");
