@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { InterviewSession, QARecord, ScoreResult } from "./types";
+import { InterviewSession, QARecord, ScoreResult, FillerWordAnalysis } from "./types";
 
 const DATA_DIR =
   process.env.VERCEL === "1"
@@ -120,7 +120,8 @@ export function saveScore(
   communication: number,
   overall: number,
   strengths: string[],
-  improvements: string[]
+  improvements: string[],
+  fillerWords: FillerWordAnalysis | null = null
 ): ScoreResult {
   const scores = readJSON<ScoreResult[]>(SCORES_FILE, []);
   const score: ScoreResult = {
@@ -132,6 +133,7 @@ export function saveScore(
     overall,
     strengths,
     improvements,
+    fillerWords,
     createdAt: new Date().toISOString(),
   };
   scores.push(score);

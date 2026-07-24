@@ -60,9 +60,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get next question from DeepSeek
+    // Get next question from DeepSeek (retry on fallback responses)
     const currentQuestionNumber = mainQuestions.length;
-    const nextQuestion = await getNextQuestion(updatedHistory, currentQuestionNumber);
+    let nextQuestion = await getNextQuestion(updatedHistory, currentQuestionNumber);
+
+    const fallbacks = [
+      "Let's continue with the next question.",
+      "Let's continue",
+    ];
+    let retries = 0;
+    while (
+      retries < 2 &&
+      fallbacks.some((f) => nextQuestion.toLowerCase().includes(f.toLowerCase()))
+    ) {
+      nextQuestion = await getNextQuestion(updatedHistory, currentQuestionNumber);
+      retries++;
+    }
 
     // Determine if this is a follow-up (simple heuristic: if it starts with a follow-up-like phrase)
     const isFollowUp =

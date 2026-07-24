@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 interface ControlsProps {
   isRecording: boolean;
   isProcessing: boolean;
+  isSpeaking: boolean;
   isEnding: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -15,25 +16,33 @@ interface ControlsProps {
 export function Controls({
   isRecording,
   isProcessing,
+  isSpeaking,
   isEnding,
   onStartRecording,
   onStopRecording,
   onEndInterview,
   micSupported,
 }: ControlsProps) {
+  const micDisabled = isProcessing || isSpeaking;
   return (
     <div className="flex items-center justify-center gap-4">
       {/* Mic toggle button */}
       {micSupported ? (
         <button
           onClick={isRecording ? onStopRecording : onStartRecording}
-          disabled={isProcessing}
+          disabled={micDisabled}
           className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
             isRecording
               ? "bg-danger text-white recording-pulse"
               : "bg-surface border border-border text-foreground hover:bg-zinc-700"
-          } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
-          title={isRecording ? "Stop recording" : "Start recording"}
+          } ${micDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          title={
+            isSpeaking
+              ? "Interviewer is speaking..."
+              : isRecording
+              ? "Stop recording"
+              : "Start recording"
+          }
         >
           <svg
             className="w-6 h-6"

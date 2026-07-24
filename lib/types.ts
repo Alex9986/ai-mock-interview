@@ -15,6 +15,12 @@ export interface QARecord {
   isFollowUp: boolean;
 }
 
+export interface FillerWordAnalysis {
+  detected: boolean;
+  examples: string[];
+  advice: string;
+}
+
 export interface ScoreResult {
   id: string;
   sessionId: string;
@@ -24,6 +30,7 @@ export interface ScoreResult {
   overall: number;
   strengths: string[];
   improvements: string[];
+  fillerWords: FillerWordAnalysis | null;
   createdAt: string;
 }
 

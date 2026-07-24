@@ -47,9 +47,17 @@ function InterviewContent() {
   const [micSupported, setMicSupported] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textAnswer, setTextAnswer] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const transcriptRef = useRef<string>("");
+  const isManuallyStoppingRef = useRef(false);
+  const submitAnswerRef = useRef<(answer: string) => Promise<void>>(
+    async () => {}
+  );
 
   // Check microphone support
   useEffect(() => {
@@ -59,6 +67,28 @@ function InterviewContent() {
     if (SpeechRecognition && typeof SpeechRecognition === "function") {
       setMicSupported(true);
     }
+  }, []);
+
+  // Preload TTS voices so the first question doesn't sound robotic
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        voicesRef.current = voices;
+      }
+    };
+
+    // Try immediately (may be empty on first call)
+    loadVoices();
+
+    // Listen for async voice loading
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+    };
   }, []);
 
   // Init interview - load first question from history
@@ -90,31 +120,56 @@ function InterviewContent() {
 
   // Speak text using TTS
   const speakText = useCallback((text: string) => {
-    if ("speechSynthesis" in window) {
+    if (!("speechSynthesis" in window)) return;
+
+    const doSpeak = () => {
       window.speechSynthesis.cancel();
+
+      // Re-fetch voices at speak time (they may have loaded since last cache)
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        voicesRef.current = voices;
+      }
+
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      // Try to find a good English voice
-      const voices = window.speechSynthesis.getVoices();
+      // Pick the most natural English voice available
       const englishVoice =
-        voices.find(
+        voicesRef.current.find(
           (v) => v.lang.startsWith("en") && v.name.includes("Google")
         ) ||
-        voices.find((v) => v.lang.startsWith("en-US")) ||
-        voices.find((v) => v.lang.startsWith("en"));
+        voicesRef.current.find((v) => v.lang.startsWith("en-US")) ||
+        voicesRef.current.find((v) => v.lang.startsWith("en"));
+
       if (englishVoice) {
         utterance.voice = englishVoice;
       }
 
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+
       synthRef.current = utterance;
       window.speechSynthesis.speak(utterance);
+    };
+
+    // If voices are already loaded, speak immediately
+    const currentVoices = window.speechSynthesis.getVoices();
+    if (currentVoices.length > 0) {
+      doSpeak();
+    } else {
+      // Voices not loaded yet (first render) - wait for them
+      const onVoicesChanged = () => {
+        window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+        doSpeak();
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
     }
   }, []);
 
-  // Start recording (STT)
+  // Start recording (STT) - continuous mode, manual stop
   const startRecording = useCallback(() => {
     const SpeechRecognition =
       (window as unknown as Record<string, unknown>).SpeechRecognition ||
@@ -124,24 +179,61 @@ function InterviewContent() {
 
     const recognition = new (SpeechRecognition as new () => SpeechRecognition)();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.continuous = true;
     recognition.maxAlternatives = 1;
 
+    transcriptRef.current = "";
+    setLiveTranscript("");
+
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      if (transcript.trim()) {
-        submitAnswer(transcript.trim());
+      // Rebuild full transcript from all results to avoid duplicates
+      let fullTranscript = "";
+      let interimTranscript = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          fullTranscript += result[0].transcript + " ";
+        } else {
+          interimTranscript += result[0].transcript;
+        }
       }
+
+      transcriptRef.current = fullTranscript.trim();
+      setLiveTranscript(fullTranscript + interimTranscript);
     };
 
     recognition.onerror = (event: Event) => {
       const errorEvent = event as SpeechRecognitionErrorEvent;
       console.error("Speech recognition error:", errorEvent.error);
       setIsRecording(false);
+      recognitionRef.current = null;
+      transcriptRef.current = "";
+      setLiveTranscript("");
     };
 
     recognition.onend = () => {
-      setIsRecording(false);
+      if (isManuallyStoppingRef.current) {
+        // User clicked stop - submit accumulated transcript
+        isManuallyStoppingRef.current = false;
+        const transcript = transcriptRef.current.trim();
+        transcriptRef.current = "";
+        setLiveTranscript("");
+        setIsRecording(false);
+        recognitionRef.current = null;
+        if (transcript) {
+          submitAnswerRef.current(transcript);
+        }
+      } else {
+        // Browser auto-stopped (e.g. long silence) - try to restart
+        try {
+          recognition.start();
+        } catch {
+          setIsRecording(false);
+          recognitionRef.current = null;
+        }
+      }
     };
 
     recognitionRef.current = recognition;
@@ -149,13 +241,12 @@ function InterviewContent() {
     setIsRecording(true);
   }, []);
 
-  // Stop recording
+  // Stop recording - triggers manual stop flag, onend will submit
   const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
+      isManuallyStoppingRef.current = true;
       recognitionRef.current.stop();
-      recognitionRef.current = null;
     }
-    setIsRecording(false);
   }, []);
 
   // Submit answer (voice or text)
@@ -163,6 +254,7 @@ function InterviewContent() {
     stopRecording();
     setTextAnswer("");
     setShowTextInput(false);
+    setLiveTranscript("");
 
     // Add user message
     const userMsg: InterviewMessage = {
@@ -216,6 +308,9 @@ function InterviewContent() {
     }
   };
 
+  // Keep ref in sync for use in recognition callbacks
+  submitAnswerRef.current = submitAnswer;
+
   // Complete the interview
   const completeInterview = async () => {
     setIsEnding(true);
@@ -262,6 +357,14 @@ function InterviewContent() {
         {/* Video / Avatar display */}
         <div className="lg:w-2/5 flex flex-col gap-4">
           <VideoDisplay isRecording={isRecording} />
+
+          {/* Live transcript while recording */}
+          {isRecording && liveTranscript && (
+            <div className="bg-zinc-800 border border-border rounded-lg p-3">
+              <p className="text-xs text-zinc-500 mb-1">Listening...</p>
+              <p className="text-sm text-foreground">{liveTranscript}</p>
+            </div>
+          )}
 
           {/* Text input fallback */}
           <Card padding="sm" className="shrink-0">
@@ -314,6 +417,7 @@ function InterviewContent() {
         <Controls
           isRecording={isRecording}
           isProcessing={isProcessing}
+          isSpeaking={isSpeaking}
           isEnding={isEnding}
           onStartRecording={startRecording}
           onStopRecording={stopRecording}

@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
       scoreResult.communication,
       scoreResult.overall,
       scoreResult.strengths,
-      scoreResult.improvements
+      scoreResult.improvements,
+      scoreResult.fillerWords
     );
 
     // Mark session as completed

@@ -10,6 +10,7 @@ import { ScoreCard } from "@/components/results/ScoreCard";
 import { DimensionScore } from "@/components/results/DimensionScore";
 import { QAList } from "@/components/results/QAList";
 import { Recommendations } from "@/components/results/Recommendations";
+import { FillerWords } from "@/components/results/FillerWords";
 
 export default function ResultsPage() {
   const params = useParams();
@@ -120,6 +121,9 @@ export default function ResultsPage() {
           strengths={score.strengths}
           improvements={score.improvements}
         />
+
+        {/* Filler words & fluency analysis */}
+        <FillerWords fillerWords={score.fillerWords} />
 
         {/* Q&A Transcript */}
         <QAList records={qaRecords} />
