@@ -8,13 +8,13 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const session = getSession(id);
+    const session = await getSession(id);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const qaRecords = getQARecords(id);
-    const score = getSessionScore(id);
+    const qaRecords = await getQARecords(id);
+    const score = await getSessionScore(id);
 
     return NextResponse.json({
       session,

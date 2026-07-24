@@ -9,13 +9,13 @@ export async function POST(request: NextRequest) {
     const category = body.category as string | undefined;
 
     // Create interview session
-    const session = createSession(category);
+    const session = await createSession(category);
 
     // Get first question from DeepSeek
     const question = await getNextQuestion([], 0);
 
     // Save the Q&A record (answer will be filled later)
-    createQARecord(session.id, 1, question, false);
+    await createQARecord(session.id, 1, question, false);
 
     const assistantMessage: DeepSeekMessage = {
       role: "assistant",

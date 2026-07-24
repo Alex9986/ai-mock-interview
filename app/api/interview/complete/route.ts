@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate session
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get all Q&A records
-    const qaRecords = getQARecords(sessionId);
+    const qaRecords = await getQARecords(sessionId);
 
     if (qaRecords.length === 0) {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const scoreResult = await scoreInterview(qaRecords);
 
     // Save to database
-    const savedScore = saveScore(
+    const savedScore = await saveScore(
       sessionId,
       scoreResult.contentQuality,
       scoreResult.starMethod,
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Mark session as completed
-    completeSession(sessionId);
+    await completeSession(sessionId);
 
     return NextResponse.json({
       score: savedScore,

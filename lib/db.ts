@@ -1,33 +1,8 @@
-import fs from "fs";
-import path from "path";
+import { getSupabase } from "./supabase";
 import { InterviewSession, QARecord, ScoreResult, FillerWordAnalysis } from "./types";
 
-const DATA_DIR =
-  process.env.VERCEL === "1"
-    ? path.join("/tmp", "data")
-    : path.join(process.cwd(), "data");
-const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
-const QA_FILE = path.join(DATA_DIR, "qa_records.json");
-const SCORES_FILE = path.join(DATA_DIR, "scores.json");
-
-function ensureDir(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function readJSON<T>(filePath: string, fallback: T): T {
-  ensureDir();
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
-    return fallback;
-  }
-  return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
-}
-
-function writeJSON<T>(filePath: string, data: T): void {
-  ensureDir();
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+function supabase() {
+  return getSupabase();
 }
 
 function generateId(): string {
@@ -35,85 +10,139 @@ function generateId(): string {
 }
 
 // Session operations
-export function createSession(category?: string): InterviewSession {
-  const sessions = readJSON<InterviewSession[]>(SESSIONS_FILE, []);
-  const session: InterviewSession = {
-    id: generateId(),
+
+export async function createSession(category?: string): Promise<InterviewSession> {
+  const id = generateId();
+  const { error } = await supabase().from("sessions").insert({
+    id,
+    status: "in_progress",
+    category: category || null,
+    started_at: new Date().toISOString(),
+  });
+
+  if (error) throw new Error(`Failed to create session: ${error.message}`);
+
+  return {
+    id,
     status: "in_progress",
     category: category || null,
     startedAt: new Date().toISOString(),
     completedAt: null,
   };
-  sessions.push(session);
-  writeJSON(SESSIONS_FILE, sessions);
-  return session;
 }
 
-export function completeSession(sessionId: string): void {
-  const sessions = readJSON<InterviewSession[]>(SESSIONS_FILE, []);
-  const idx = sessions.findIndex((s) => s.id === sessionId);
-  if (idx !== -1) {
-    sessions[idx].status = "completed";
-    sessions[idx].completedAt = new Date().toISOString();
-    writeJSON(SESSIONS_FILE, sessions);
-  }
+export async function completeSession(sessionId: string): Promise<void> {
+  const { error } = await supabase()
+    .from("sessions")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .eq("id", sessionId);
+
+  if (error) throw new Error(`Failed to complete session: ${error.message}`);
 }
 
-export function getSession(sessionId: string): InterviewSession | null {
-  const sessions = readJSON<InterviewSession[]>(SESSIONS_FILE, []);
-  return sessions.find((s) => s.id === sessionId) || null;
+export async function getSession(sessionId: string): Promise<InterviewSession | null> {
+  const { data, error } = await supabase()
+    .from("sessions")
+    .select("*")
+    .eq("id", sessionId)
+    .single();
+
+  if (error) return null;
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    status: data.status,
+    category: data.category,
+    startedAt: data.started_at,
+    completedAt: data.completed_at,
+  };
 }
 
-export function getAllSessions(): InterviewSession[] {
-  return readJSON<InterviewSession[]>(SESSIONS_FILE, []).sort(
-    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-  );
+export async function getAllSessions(): Promise<InterviewSession[]> {
+  const { data, error } = await supabase()
+    .from("sessions")
+    .select("*")
+    .order("started_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to get sessions: ${error.message}`);
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    status: row.status,
+    category: row.category,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }));
 }
 
 // QA record operations
-export function createQARecord(
+
+export async function createQARecord(
   sessionId: string,
   questionNumber: number,
   question: string,
   isFollowUp: boolean = false
-): QARecord {
-  const records = readJSON<QARecord[]>(QA_FILE, []);
-  const record: QARecord = {
-    id: generateId(),
+): Promise<QARecord> {
+  const id = generateId();
+  const { error } = await supabase().from("qa_records").insert({
+    id,
+    session_id: sessionId,
+    question_number: questionNumber,
+    question,
+    answer: null,
+    is_follow_up: isFollowUp,
+  });
+
+  if (error) throw new Error(`Failed to create QA record: ${error.message}`);
+
+  return {
+    id,
     sessionId,
     questionNumber,
     question,
     answer: null,
     isFollowUp,
   };
-  records.push(record);
-  writeJSON(QA_FILE, records);
-  return record;
 }
 
-export function updateQARecordAnswer(qaId: string, answer: string): void {
-  const records = readJSON<QARecord[]>(QA_FILE, []);
-  const idx = records.findIndex((r) => r.id === qaId);
-  if (idx !== -1) {
-    records[idx].answer = answer;
-    writeJSON(QA_FILE, records);
-  }
+export async function updateQARecordAnswer(qaId: string, answer: string): Promise<void> {
+  const { error } = await supabase()
+    .from("qa_records")
+    .update({ answer })
+    .eq("id", qaId);
+
+  if (error) throw new Error(`Failed to update QA record: ${error.message}`);
 }
 
-export function getQARecords(sessionId: string): QARecord[] {
-  const records = readJSON<QARecord[]>(QA_FILE, []);
-  return records
-    .filter((r) => r.sessionId === sessionId)
-    .sort((a, b) => a.questionNumber - b.questionNumber);
+export async function getQARecords(sessionId: string): Promise<QARecord[]> {
+  const { data, error } = await supabase()
+    .from("qa_records")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("question_number", { ascending: true });
+
+  if (error) throw new Error(`Failed to get QA records: ${error.message}`);
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    questionNumber: row.question_number,
+    question: row.question,
+    answer: row.answer,
+    isFollowUp: row.is_follow_up,
+  }));
 }
 
-export function getLatestQARecord(sessionId: string): QARecord | null {
-  const records = getQARecords(sessionId);
+export async function getLatestQARecord(sessionId: string): Promise<QARecord | null> {
+  const records = await getQARecords(sessionId);
   return records.length > 0 ? records[records.length - 1] : null;
 }
 
 // Score operations
-export function saveScore(
+
+export async function saveScore(
   sessionId: string,
   contentQuality: number,
   starMethod: number,
@@ -122,10 +151,25 @@ export function saveScore(
   strengths: string[],
   improvements: string[],
   fillerWords: FillerWordAnalysis | null = null
-): ScoreResult {
-  const scores = readJSON<ScoreResult[]>(SCORES_FILE, []);
-  const score: ScoreResult = {
-    id: generateId(),
+): Promise<ScoreResult> {
+  const id = generateId();
+  const { error } = await supabase().from("scores").insert({
+    id,
+    session_id: sessionId,
+    content_quality: contentQuality,
+    star_method: starMethod,
+    communication,
+    overall,
+    strengths,
+    improvements,
+    filler_words: fillerWords,
+    created_at: new Date().toISOString(),
+  });
+
+  if (error) throw new Error(`Failed to save score: ${error.message}`);
+
+  return {
+    id,
     sessionId,
     contentQuality,
     starMethod,
@@ -136,12 +180,29 @@ export function saveScore(
     fillerWords,
     createdAt: new Date().toISOString(),
   };
-  scores.push(score);
-  writeJSON(SCORES_FILE, scores);
-  return score;
 }
 
-export function getSessionScore(sessionId: string): ScoreResult | null {
-  const scores = readJSON<ScoreResult[]>(SCORES_FILE, []);
-  return scores.find((s) => s.sessionId === sessionId) || null;
+export async function getSessionScore(sessionId: string): Promise<ScoreResult | null> {
+  const { data, error } = await supabase()
+    .from("scores")
+    .select("*")
+    .eq("session_id", sessionId)
+    .single();
+
+  if (error) return null;
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    sessionId: data.session_id,
+    contentQuality: data.content_quality,
+    starMethod: data.star_method,
+    communication: data.communication,
+    overall: data.overall,
+    strengths: data.strengths || [],
+    improvements: data.improvements || [],
+    fillerWords: data.filler_words || null,
+    createdAt: data.created_at,
+  };
 }

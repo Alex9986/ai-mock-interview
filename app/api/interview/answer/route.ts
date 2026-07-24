@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate session exists and is active
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
@@ -34,10 +34,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Update the latest Q&A record with the user's answer
-    const records = getQARecords(sessionId);
+    const records = await getQARecords(sessionId);
     const latestRecord = records[records.length - 1];
     if (latestRecord) {
-      updateQARecordAnswer(latestRecord.id, answer);
+      await updateQARecordAnswer(latestRecord.id, answer);
     }
 
     // Add user's answer to conversation history
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Save the new Q&A record
     const nextQuestionNumber = records.length + 1;
-    createQARecord(sessionId, nextQuestionNumber, nextQuestion, isFollowUp);
+    await createQARecord(sessionId, nextQuestionNumber, nextQuestion, isFollowUp);
 
     // Add assistant's response to history
     const newHistory: DeepSeekMessage[] = [
